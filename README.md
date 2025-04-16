@@ -59,6 +59,9 @@ pip install -r requirements.txt
 Create a `.env` file in the project root directory with the following content:
 
 ```env
+# Deriv secret Key
+SECRET_KEY=deriv secret key
+
 # Deriv API Configuration
 APP_ID=YOUR_APP_ID_HERE
 
