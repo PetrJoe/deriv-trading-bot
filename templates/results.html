@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ symbol }} Analysis - Stock Pattern Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        .header {
+            margin-bottom: 2rem;
+        }
+        .pattern-card {
+            margin-bottom: 1rem;
+        }
+        .chart-container {
+            margin-bottom: 2rem;
+        }
+        .recommendation {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .buy {
+            color: green;
+        }
+        .sell {
+            color: red;
+        }
+        .hold {
+            color: orange;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{ symbol }} Technical Analysis</h1>
+            <p class="lead">Analysis date: {{ result.analysis_date }}</p>
+            <a href="/" class="btn btn-outline-secondary">Back to Home</a>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-8">
+                <div class="chart-container">
+                    <img src="/{{ result.chart_path }}" alt="{{ symbol }} Chart" class="img-fluid">
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h4>Stock Information</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Current Price:</strong> ${{ "%.2f"|format(result.current_price) }}</p>
+                                <p><strong>Change:</strong> 
+                                    <span class="{{ 'text-success' if result.change_percent > 0 else 'text-danger' }}">
+                                        {{ "%.2f"|format(result.change_percent) }}%
+                                    </span>
+                                </p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Period:</strong> {{ result.period }}</p>
+                                <p><strong>Interval:</strong> {{ result.interval }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Recommendation</h4>
+                    </div>
+                    <div class="card-body text-center">
+                        <p class="recommendation {{ result.recommendation.lower() }}">
+                            {{ result.recommendation }}
+                        </p>
+                        <div class="progress mb-3">
+                            <div class="progress-bar 
+                                {{ 'bg-success' if result.recommendation == 'BUY' else 'bg-danger' if result.recommendation == 'SELL' else 'bg-warning' }}" 
+                                role="progressbar" 
+                                style="width: {{ result.signal_strength * 100 }}%"
+                                aria-valuenow="{{ result.signal_strength * 100 }}" 
+                                aria-valuemin="0" 
+                                aria-valuemax="100">
+                                Signal Strength: {{ "%.0f"|format(result.signal_strength * 100) }}%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Detected Patterns</h4>
+                    </div>
+                    <div class="card-body">
+                        {% if result.detected_patterns|length > 0 %}
+                            {% for pattern_name, pattern_data in result.detected_patterns.items() %}
+                                <div class="pattern-card">
+                                    <h5>{{ pattern_name|replace('_', ' ')|title }}</h5>
+                                    <p>
+                                        <span class="badge 
+                                            {{ 'bg-success' if pattern_data.signal == 'bullish' else 'bg-danger' if pattern_data.signal == 'bearish' else 'bg-secondary' }}">
+                                            {{ pattern_data.signal|title }}
+                                        </span>
+                                        <span class="badge bg-info">
+                                            Confidence: {{ "%.0f"|format(pattern_data.confidence * 100) }}%
+                                        </span>
+                                    </p>
+                                    {% if pattern_data.target %}
+                                        <p><small>Target: ${{ "%.2f"|format(pattern_data.target) }}</small></p>
+                                    {% endif %}
+                                </div>
+                                <hr>
+                            {% endfor %}
+                        {% else %}
+                            <p>No patterns detected.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

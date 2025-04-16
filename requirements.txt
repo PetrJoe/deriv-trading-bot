@@ -1,0 +1,13 @@
+flask
+flask-socketio
+python-socketio
+eventlet
+pandas
+matplotlib
+python-dotenv
+prometheus-client
+python-deriv-api
+numpy
+yfinance
+scikit-learn
+talib-binary
