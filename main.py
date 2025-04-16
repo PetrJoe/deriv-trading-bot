@@ -7,9 +7,10 @@ from datetime import datetime
 from typing import Dict, List, Union, Optional, Tuple
 from dotenv import load_dotenv
 
-from pattern_recognition import PatternRecognizer
+from pattern_recognition import PatternRecognition  # Update class name to match
 from chart_utils import plot_enhanced_chart
 from bot import fetch_deriv_candles
+
 
 # Load environment variables
 load_dotenv()
@@ -53,7 +54,7 @@ def analyze_deriv_asset(symbol: str = DEFAULT_SYMBOL,
         df['SMA_50'] = df['close'].rolling(window=50).mean()
         
         # Initialize pattern recognizer
-        recognizer = PatternRecognizer(df)
+        recognizer = PatternRecognition(df)
         
         # Detect patterns
         patterns = recognizer.detect_all_patterns()

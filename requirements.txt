@@ -10,7 +10,7 @@ python-deriv-api
 numpy
 yfinance
 scikit-learn
-ta-lib
+ta
 
 
 

@@ -2,8 +2,9 @@ import numpy as np
 import pandas as pd
 from scipy.signal import argrelextrema
 from scipy.stats import linregress
-import talib
+import ta  # Replace talib with ta library
 from typing import Tuple, List, Dict, Optional, Union
+
 
 class PatternRecognition:
     def __init__(self, df: pd.DataFrame, price_col: str = 'close', time_col: str = 'epoch'):
@@ -1342,7 +1343,7 @@ class PatternRecognition:
     
     def detect_candlestick_patterns(self) -> Dict[str, Dict[str, Union[bool, float, str]]]:
         """
-        Detect candlestick patterns using TA-Lib.
+        Detect candlestick patterns using ta library instead of TA-Lib.
         
         Returns:
             Dictionary with pattern names as keys and detection results as values
@@ -1351,67 +1352,185 @@ class PatternRecognition:
         
         try:
             # Make sure we have the required OHLC data
-            open_prices = self.df['open'].values
-            high_prices = self.df['high'].values
-            low_prices = self.df['low'].values
-            close_prices = self.df['close'].values
-            
-            # Bullish patterns
-            bullish_patterns = {
-                'hammer': talib.CDLHAMMER,
-                'inverted_hammer': talib.CDLINVERTEDHAMMER,
-                'engulfing_bullish': talib.CDLENGULFING,
-                'morning_star': talib.CDLMORNINGSTAR,
-                'piercing_line': talib.CDLPIERCING,
-                'three_white_soldiers': talib.CDL3WHITESOLDIERS,
-                'bullish_harami': talib.CDLHARAMI,
-                'bullish_harami_cross': talib.CDLHARAMICROSS,
-                'dragonfly_doji': talib.CDLDRAGONFLYDOJI,
-                'three_inside_up': talib.CDL3INSIDE
-            }
-            
-            # Bearish patterns
-            bearish_patterns = {
-                'hanging_man': talib.CDLHANGINGMAN,
-                'shooting_star': talib.CDLSHOOTINGSTAR,
-                'engulfing_bearish': talib.CDLENGULFING,
-                'evening_star': talib.CDLEVENINGSTAR,
-                'dark_cloud_cover': talib.CDLDARKCLOUDCOVER,
-                'three_black_crows': talib.CDL3BLACKCROWS,
-                'bearish_harami': talib.CDLHARAMI,
-                'bearish_harami_cross': talib.CDLHARAMICROSS,
-                'gravestone_doji': talib.CDLGRAVESTONEDOJI,
-                'three_inside_down': talib.CDL3INSIDE
-            }
-            
-            # Check for bullish patterns
-            for pattern_name, pattern_func in bullish_patterns.items():
-                pattern_result = pattern_func(open_prices, high_prices, low_prices, close_prices)
+            if len(self.df) < 2:
+                return results
                 
-                # Check if the pattern is detected in the most recent candle
-                if pattern_result[-1] > 0:
-                    results[pattern_name] = {
+            # Create a copy of the dataframe to avoid modifying the original
+            df = self.df.copy()
+            
+            # Calculate some pattern indicators using ta library
+            # Note: ta doesn't have direct candlestick pattern recognition like TA-Lib
+            # We'll use momentum indicators and other signals as proxies
+            
+            # Add momentum indicators
+            df['rsi'] = ta.momentum.RSIIndicator(df['close']).rsi()
+            df['stoch'] = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close']).stoch()
+            df['stoch_signal'] = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close']).stoch_signal()
+            df['macd'] = ta.trend.MACD(df['close']).macd()
+            df['macd_signal'] = ta.trend.MACD(df['close']).macd_signal()
+            
+            # Add volatility indicators
+            df['bb_high'] = ta.volatility.BollingerBands(df['close']).bollinger_hband()
+            df['bb_low'] = ta.volatility.BollingerBands(df['close']).bollinger_lband()
+            
+            # Current candle and previous candle
+            current = df.iloc[-1]
+            previous = df.iloc[-2] if len(df) > 1 else None
+            
+            if previous is not None:
+                # Bullish engulfing
+                if (previous['open'] > previous['close'] and  # Previous candle is bearish
+                    current['open'] < current['close'] and    # Current candle is bullish
+                    current['open'] <= previous['close'] and  # Current open is below or equal to previous close
+                    current['close'] > previous['open']):     # Current close is above previous open
+                    results['engulfing_bullish'] = {
                         'detected': True,
                         'signal': 'bullish',
-                        'confidence': min(1.0, pattern_result[-1] / 100),
-                        'candle_idx': len(pattern_result) - 1
+                        'confidence': 0.8,
+                        'candle_idx': len(df) - 1
                     }
-            
-            # Check for bearish patterns
-            for pattern_name, pattern_func in bearish_patterns.items():
-                pattern_result = pattern_func(open_prices, high_prices, low_prices, close_prices)
                 
-                # Check if the pattern is detected in the most recent candle
-                if pattern_result[-1] < 0:
-                    results[pattern_name] = {
+                # Bearish engulfing
+                if (previous['open'] < previous['close'] and  # Previous candle is bullish
+                    current['open'] > current['close'] and    # Current candle is bearish
+                    current['open'] >= previous['close'] and  # Current open is above or equal to previous close
+                    current['close'] < previous['open']):     # Current close is below previous open
+                    results['engulfing_bearish'] = {
                         'detected': True,
                         'signal': 'bearish',
-                        'confidence': min(1.0, abs(pattern_result[-1]) / 100),
-                        'candle_idx': len(pattern_result) - 1
+                        'confidence': 0.8,
+                        'candle_idx': len(df) - 1
                     }
+                
+                # Hammer (bullish)
+                body_size = abs(current['open'] - current['close'])
+                lower_wick = min(current['open'], current['close']) - current['low']
+                upper_wick = current['high'] - max(current['open'], current['close'])
+                
+                if (lower_wick > body_size * 2 and  # Lower wick is at least 2x the body
+                    upper_wick < body_size * 0.5 and  # Upper wick is small
+                    current['close'] > current['open']):  # Bullish candle
+                    results['hammer'] = {
+                        'detected': True,
+                        'signal': 'bullish',
+                        'confidence': 0.7,
+                        'candle_idx': len(df) - 1
+                    }
+                
+                # Shooting star (bearish)
+                if (upper_wick > body_size * 2 and  # Upper wick is at least 2x the body
+                    lower_wick < body_size * 0.5 and  # Lower wick is small
+                    current['close'] < current['open']):  # Bearish candle
+                    results['shooting_star'] = {
+                        'detected': True,
+                        'signal': 'bearish',
+                        'confidence': 0.7,
+                        'candle_idx': len(df) - 1
+                    }
+                
+                # Doji
+                if abs(current['open'] - current['close']) < (current['high'] - current['low']) * 0.1:
+                    if current['high'] - max(current['open'], current['close']) > 2 * body_size:
+                        # Gravestone doji (bearish)
+                        results['gravestone_doji'] = {
+                            'detected': True,
+                            'signal': 'bearish',
+                            'confidence': 0.6,
+                            'candle_idx': len(df) - 1
+                        }
+                    elif min(current['open'], current['close']) - current['low'] > 2 * body_size:
+                        # Dragonfly doji (bullish)
+                        results['dragonfly_doji'] = {
+                            'detected': True,
+                            'signal': 'bullish',
+                            'confidence': 0.6,
+                            'candle_idx': len(df) - 1
+                        }
+            
+            # Check for momentum-based signals
+            if current['rsi'] < 30:
+                results['oversold'] = {
+                    'detected': True,
+                    'signal': 'bullish',
+                    'confidence': 0.6,
+                    'candle_idx': len(df) - 1
+                }
+            
+            if current['rsi'] > 70:
+                results['overbought'] = {
+                    'detected': True,
+                    'signal': 'bearish',
+                    'confidence': 0.6,
+                    'candle_idx': len(df) - 1
+                }
+            
+            # MACD crossover (bullish)
+            if (previous is not None and
+                previous['macd'] < previous['macd_signal'] and
+                current['macd'] > current['macd_signal']):
+                results['macd_bullish_crossover'] = {
+                    'detected': True,
+                    'signal': 'bullish',
+                    'confidence': 0.7,
+                    'candle_idx': len(df) - 1
+                }
+            
+            # MACD crossover (bearish)
+            if (previous is not None and
+                previous['macd'] > previous['macd_signal'] and
+                current['macd'] < current['macd_signal']):
+                results['macd_bearish_crossover'] = {
+                    'detected': True,
+                    'signal': 'bearish',
+                    'confidence': 0.7,
+                    'candle_idx': len(df) - 1
+                }
+            
+            # Stochastic crossover (bullish)
+            if (previous is not None and
+                previous['stoch'] < previous['stoch_signal'] and
+                current['stoch'] > current['stoch_signal'] and
+                current['stoch'] < 20):
+                results['stoch_bullish_crossover'] = {
+                    'detected': True,
+                    'signal': 'bullish',
+                    'confidence': 0.7,
+                    'candle_idx': len(df) - 1
+                }
+            
+            # Stochastic crossover (bearish)
+            if (previous is not None and
+                previous['stoch'] > previous['stoch_signal'] and
+                current['stoch'] < current['stoch_signal'] and
+                current['stoch'] > 80):
+                results['stoch_bearish_crossover'] = {
+                    'detected': True,
+                    'signal': 'bearish',
+                    'confidence': 0.7,
+                    'candle_idx': len(df) - 1
+                }
+            
+            # Bollinger Band signals
+            if current['close'] < current['bb_low']:
+                results['bb_oversold'] = {
+                    'detected': True,
+                    'signal': 'bullish',
+                    'confidence': 0.6,
+                    'candle_idx': len(df) - 1
+                }
+            
+            if current['close'] > current['bb_high']:
+                results['bb_overbought'] = {
+                    'detected': True,
+                    'signal': 'bearish',
+                    'confidence': 0.6,
+                    'candle_idx': len(df) - 1
+                }
         
         except Exception as e:
-            # If TA-Lib is not available or there's an error, just return empty results
-            pass
+            # If there's an error, just return empty results
+            print(f"Error detecting candlestick patterns: {e}")
         
         return results
+
+

@@ -5,9 +5,11 @@ import asyncio
 from datetime import datetime
 from deriv_api import DerivAPI
 from dotenv import load_dotenv
-from pattern_recognition import PatternRecognizer
+from pattern_recognition import PatternRecognition  # Update class name to match
 from chart_utils import plot_enhanced_chart
 from bot import fetch_deriv_candles, analyze_data
+
+
 
 # Load environment variables
 load_dotenv()
