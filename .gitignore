@@ -1,4 +1,5 @@
 .env
 static/
-data.
+data.csv
 pycache
+__pycache__
