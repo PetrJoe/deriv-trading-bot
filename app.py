@@ -1,18 +1,20 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for  #type:ignore
 import os
 import json
 import asyncio
 from datetime import datetime
-from deriv_api import DerivAPI
+from deriv_api import DerivAPI #type:ignore
 from dotenv import load_dotenv
 from pattern_recognition import PatternRecognition  # Update class name to match
-from chart_utils import plot_enhanced_chart
+from chart_utils import plot_enhanced_chart, plot_deriv_chart  # Add plot_deriv_chart import
 from bot import fetch_deriv_candles, analyze_data
 
 
 
-# Load environment variables
 load_dotenv()
+
+# Create static directory if it doesn't exist
+os.makedirs('static', exist_ok=True)
 
 app = Flask(__name__)
 
@@ -42,10 +44,31 @@ def results(symbol):
     try:
         with open(f'static/{symbol}_analysis.json', 'r') as f:
             result = json.load(f)
+        
+        # Ensure required fields exist to prevent template errors
+        if 'current_price' not in result:
+            result['current_price'] = 0.0
+        if 'change_percent' not in result:
+            result['change_percent'] = 0.0
+        if 'analysis_date' not in result:
+            result['analysis_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if 'granularity' not in result:
+            result['granularity'] = 60
+        if 'candle_count' not in result:
+            result['candle_count'] = 100
+        if 'recommendation' not in result:
+            result['recommendation'] = 'HOLD'
+        if 'signal_strength' not in result:
+            result['signal_strength'] = 0.5
+        if 'detected_patterns' not in result:
+            result['detected_patterns'] = {}
+        if 'chart_path' not in result:
+            result['chart_path'] = f"static/{symbol}_chart.png"
+            
+        return render_template('results.html', result=result, symbol=symbol)
     except FileNotFoundError:
         return render_template('error.html', message=f"No analysis found for {symbol}")
-    
-    return render_template('results.html', result=result, symbol=symbol)
+
 
 @app.route('/api/analyze/<symbol>')
 def api_analyze(symbol):
@@ -56,6 +79,7 @@ def api_analyze(symbol):
     result = analyze_deriv_asset(symbol, granularity, candle_count)
     
     return jsonify(result)
+
 
 def analyze_deriv_asset(symbol, granularity, candle_count):
     """
@@ -87,16 +111,23 @@ def analyze_deriv_asset(symbol, granularity, candle_count):
         df['SMA_50'] = df['close'].rolling(window=50).mean()
         
         # Initialize pattern recognizer
-        recognizer = PatternRecognizer(df)
+        recognizer = PatternRecognition(df)
         
         # Detect patterns
         patterns = recognizer.detect_all_patterns()
         
-        # Generate chart
-        chart_path = f"static/{symbol}_chart.png"
+        # Generate chart - FIXED PATH
+        os.makedirs('static', exist_ok=True)  # Ensure directory exists
+        chart_filename = f"{symbol}_chart.png"
+        chart_path = os.path.join("static", chart_filename)
+        
+        # Plot chart with absolute path for saving
         plot_enhanced_chart(df, patterns, 
                            title=f"{symbol} Technical Analysis", 
                            save_path=chart_path)
+        
+        # Store relative path for display in HTML
+        display_chart_path = chart_path
         
         # Prepare results
         detected_patterns = {}
@@ -145,7 +176,7 @@ def analyze_deriv_asset(symbol, granularity, candle_count):
             'recommendation': recommendation,
             'signal_strength': signal_strength,
             'detected_patterns': detected_patterns,
-            'chart_path': chart_path
+            'chart_path': display_chart_path
         }
         
         return result
@@ -156,6 +187,60 @@ def analyze_deriv_asset(symbol, granularity, candle_count):
             'success': False,
             'error': str(e)
         }
+
+@app.route('/test_chart/<symbol>')
+
+@app.route('/test_chart/<symbol>')
+def test_chart(symbol):
+    """Test route to verify chart generation and display"""
+    try:
+        # Create a simple test chart
+        import pandas as pd
+        import numpy as np
+        from datetime import datetime, timedelta
+        
+        # Generate sample data
+        dates = [datetime.now() - timedelta(minutes=i) for i in range(100, 0, -1)]
+        data = {
+            'open': np.random.normal(100, 5, 100),
+            'high': np.random.normal(105, 5, 100),
+            'low': np.random.normal(95, 5, 100),
+            'close': np.random.normal(100, 5, 100),
+            'volume': np.random.normal(1000, 200, 100)
+        }
+        df = pd.DataFrame(data, index=dates)
+        
+        # Calculate some basic indicators for plot_enhanced_chart
+        df['SMA_5'] = df['close'].rolling(window=5).mean()
+        df['SMA_10'] = df['close'].rolling(window=10).mean()
+        
+        # Add local extrema for pattern detection
+        from scipy.signal import argrelextrema
+        df['local_max'] = df.iloc[argrelextrema(df['close'].values, np.greater_equal, order=5)[0]]['close']
+        df['local_min'] = df.iloc[argrelextrema(df['close'].values, np.less_equal, order=5)[0]]['close']
+        
+        # Ensure static directory exists
+        os.makedirs('static', exist_ok=True)
+        
+        # Save a test chart using plot_enhanced_chart instead
+        chart_path = f"static/{symbol}_test_chart.png"
+        plot_enhanced_chart(df, {}, title=f"{symbol} Test Chart", save_path=chart_path)
+        
+        return f"""
+        <html>
+            <head><title>Chart Test</title></head>
+            <body>
+                <h1>Test Chart for {symbol}</h1>
+                <img src="/{chart_path}" alt="Test Chart">
+                <p>Chart path: {chart_path}</p>
+                <p>Current time: {datetime.now()}</p>
+            </body>
+        </html>
+        """
+    except Exception as e:
+        return f"Error generating test chart: {str(e)}"
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)

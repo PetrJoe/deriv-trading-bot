@@ -14,15 +14,6 @@ def plot_enhanced_chart(df: pd.DataFrame, patterns: Dict,
                         figsize: Tuple[int, int] = (12, 8)) -> None:
     """
     Plot an enhanced chart with detected patterns and signals.
-    
-    Args:
-        df: DataFrame with price data
-        patterns: Dictionary of detected patterns
-        title: Chart title
-        save_path: Path to save the chart image
-        show_patterns: Whether to highlight detected patterns
-        show_signals: Whether to show buy/sell signals
-        figsize: Figure size (width, height) in inches
     """
     # Create figure and primary axis for price
     fig, ax1 = plt.subplots(figsize=figsize)
@@ -76,10 +67,15 @@ def plot_enhanced_chart(df: pd.DataFrame, patterns: Dict,
     # Ensure directory exists
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     
-    # Save the figure
+    # Save the figure with explicit dpi and bbox_inches settings
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300)
-    plt.close()
+    try:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Chart saved successfully to {save_path}")
+    except Exception as e:
+        print(f"Error saving chart to {save_path}: {str(e)}")
+    finally:
+        plt.close(fig)  # Explicitly close the figure to free memory
 
 def plot_candlestick_chart(ax, df: pd.DataFrame) -> None:
     """

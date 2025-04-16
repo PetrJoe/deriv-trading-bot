@@ -3,129 +3,189 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ symbol }} Analysis - Stock Pattern Analyzer</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-        }
-        .header {
-            margin-bottom: 2rem;
-        }
-        .pattern-card {
-            margin-bottom: 1rem;
-        }
-        .chart-container {
-            margin-bottom: 2rem;
-        }
-        .recommendation {
-            font-size: 1.5rem;
-            font-weight: bold;
-        }
-        .buy {
-            color: green;
-        }
-        .sell {
-            color: red;
-        }
-        .hold {
-            color: orange;
-        }
-    </style>
+    <title>{{ symbol }} Analysis - Deriv Pattern Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>{{ symbol }} Technical Analysis</h1>
-            <p class="lead">Analysis date: {{ result.analysis_date }}</p>
-            <a href="/" class="btn btn-outline-secondary">Back to Home</a>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Navbar -->
+    <nav class="bg-indigo-600 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <span class="text-white text-xl font-bold">Deriv Pattern Analyzer</span>
+                    </div>
+                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                        <a href="/" class="text-gray-300 hover:bg-indigo-700 hover:text-white inline-flex items-center px-1 pt-1 text-sm font-medium">
+                            Home
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">{{ symbol }} Technical Analysis</h1>
+            <p class="mt-2 text-gray-600">Analysis date: {{ result.analysis_date }}</p>
+            <a href="/" class="mt-4 inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                Back to Home
+            </a>
         </div>
         
-        <div class="row">
-            <div class="col-md-8">
-                <div class="chart-container">
-                    <img src="/{{ result.chart_path }}" alt="{{ symbol }} Chart" class="img-fluid">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 space-y-6">
+                <div class="bg-white shadow-md rounded-lg overflow-hidden">
+                    <img src="/{{ result.chart_path }}" alt="{{ symbol }} Chart" class="w-full">
                 </div>
                 
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h4>Stock Information</h4>
+                <div class="bg-white shadow-md rounded-lg overflow-hidden">
+                    <div class="px-4 py-5 sm:px-6 bg-gray-50">
+                        <h2 class="text-lg font-medium text-gray-900">Asset Information</h2>
                     </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <p><strong>Current Price:</strong> ${{ "%.2f"|format(result.current_price) }}</p>
-                                <p><strong>Change:</strong> 
-                                    <span class="{{ 'text-success' if result.change_percent > 0 else 'text-danger' }}">
+                    <div class="px-4 py-5 sm:p-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-sm text-gray-600"><span class="font-medium text-gray-900">Current Price:</span> ${{ "%.2f"|format(result.current_price) }}</p>
+                                <p class="text-sm text-gray-600 mt-2">
+                                    <span class="font-medium text-gray-900">Change:</span> 
+                                    <span class="{{ 'text-green-600' if result.change_percent > 0 else 'text-red-600' }}">
                                         {{ "%.2f"|format(result.change_percent) }}%
                                     </span>
                                 </p>
                             </div>
-                            <div class="col-md-6">
-                                <p><strong>Period:</strong> {{ result.period }}</p>
-                                <p><strong>Interval:</strong> {{ result.interval }}</p>
+                            <div>
+                                <p class="text-sm text-gray-600"><span class="font-medium text-gray-900">Granularity:</span> {{ result.granularity }} seconds</p>
+                                <p class="text-sm text-gray-600 mt-2"><span class="font-medium text-gray-900">Candles:</span> {{ result.candle_count }}</p>
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Recommendation</h4>
+                <div class="bg-white shadow-md rounded-lg overflow-hidden">
+                    <div class="px-4 py-5 sm:px-6 bg-gray-50">
+                        <h2 class="text-lg font-medium text-gray-900">Recommendation</h2>
                     </div>
-                    <div class="card-body text-center">
-                        <p class="recommendation {{ result.recommendation.lower() }}">
+                    <div class="px-4 py-5 sm:p-6 text-center">
+                        <p class="text-2xl font-bold 
+                            {{ 'text-green-600' if result.recommendation == 'BUY' else 'text-red-600' if result.recommendation == 'SELL' else 'text-yellow-600' }}">
                             {{ result.recommendation }}
                         </p>
-                        <div class="progress mb-3">
-                            <div class="progress-bar 
-                                {{ 'bg-success' if result.recommendation == 'BUY' else 'bg-danger' if result.recommendation == 'SELL' else 'bg-warning' }}" 
-                                role="progressbar" 
-                                style="width: {{ result.signal_strength * 100 }}%"
-                                aria-valuenow="{{ result.signal_strength * 100 }}" 
-                                aria-valuemin="0" 
-                                aria-valuemax="100">
-                                Signal Strength: {{ "%.0f"|format(result.signal_strength * 100) }}%
+                        <div class="w-full bg-gray-200 rounded-full h-2.5 mt-4 mb-6">
+                            <div class="h-2.5 rounded-full 
+                                {{ 'bg-green-600' if result.recommendation == 'BUY' else 'bg-red-600' if result.recommendation == 'SELL' else 'bg-yellow-600' }}" 
+                                style="width: {{ result.signal_strength * 100 }}%">
                             </div>
                         </div>
+                        <p class="text-sm text-gray-600">Signal Strength: {{ "%.0f"|format(result.signal_strength * 100) }}%</p>
                     </div>
                 </div>
             </div>
             
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Detected Patterns</h4>
+            <div class="lg:col-span-1">
+                <div class="bg-white shadow-md rounded-lg overflow-hidden">
+                    <div class="px-4 py-5 sm:px-6 bg-gray-50">
+                        <h2 class="text-lg font-medium text-gray-900">Detected Patterns</h2>
                     </div>
-                    <div class="card-body">
+                    <div class="px-4 py-5 sm:p-6">
                         {% if result.detected_patterns|length > 0 %}
                             {% for pattern_name, pattern_data in result.detected_patterns.items() %}
-                                <div class="pattern-card">
-                                    <h5>{{ pattern_name|replace('_', ' ')|title }}</h5>
-                                    <p>
-                                        <span class="badge 
-                                            {{ 'bg-success' if pattern_data.signal == 'bullish' else 'bg-danger' if pattern_data.signal == 'bearish' else 'bg-secondary' }}">
+                                <div class="mb-4">
+                                    <h3 class="text-md font-medium text-gray-900">{{ pattern_name|replace('_', ' ')|title }}</h3>
+                                    <div class="mt-2 flex flex-wrap gap-2">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                            {{ 'bg-green-100 text-green-800' if pattern_data.signal == 'bullish' else 'bg-red-100 text-red-800' if pattern_data.signal == 'bearish' else 'bg-gray-100 text-gray-800' }}">
                                             {{ pattern_data.signal|title }}
                                         </span>
-                                        <span class="badge bg-info">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                             Confidence: {{ "%.0f"|format(pattern_data.confidence * 100) }}%
                                         </span>
-                                    </p>
+                                    </div>
                                     {% if pattern_data.target %}
-                                        <p><small>Target: ${{ "%.2f"|format(pattern_data.target) }}</small></p>
+                                        <p class="mt-1 text-xs text-gray-500">Target: ${{ "%.2f"|format(pattern_data.target) }}</p>
                                     {% endif %}
                                 </div>
-                                <hr>
+                                {% if not loop.last %}
+                                    <div class="border-t border-gray-200 my-4"></div>
+                                {% endif %}
                             {% endfor %}
                         {% else %}
-                            <p>No patterns detected.</p>
+                            <p class="text-gray-500">No patterns detected.</p>
                         {% endif %}
+                    </div>
+                </div>
+                
+                <div class="bg-white shadow-md rounded-lg overflow-hidden mt-6">
+                    <div class="px-4 py-5 sm:px-6 bg-gray-50">
+                        <h2 class="text-lg font-medium text-gray-900">Trading Indicators</h2>
+                    </div>
+                    <div class="px-4 py-5 sm:p-6">
+                        <div class="space-y-4">
+                            {% if result.detected_patterns.macd_bullish_crossover is defined or result.detected_patterns.macd_bearish_crossover is defined %}
+                                <div>
+                                    <h3 class="text-md font-medium text-gray-900">MACD</h3>
+                                    <p class="text-sm text-gray-600 mt-1">
+                                        {% if result.detected_patterns.macd_bullish_crossover is defined and result.detected_patterns.macd_bullish_crossover.detected %}
+                                            <span class="text-green-600">Bullish Crossover</span>
+                                        {% elif result.detected_patterns.macd_bearish_crossover is defined and result.detected_patterns.macd_bearish_crossover.detected %}
+                                            <span class="text-red-600">Bearish Crossover</span>
+                                        {% else %}
+                                            <span class="text-gray-500">No Signal</span>
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            {% endif %}
+                            
+                            {% if result.detected_patterns.stoch_bullish_crossover is defined or result.detected_patterns.stoch_bearish_crossover is defined %}
+                                <div>
+                                    <h3 class="text-md font-medium text-gray-900">Stochastic</h3>
+                                    <p class="text-sm text-gray-600 mt-1">
+                                        {% if result.detected_patterns.stoch_bullish_crossover is defined and result.detected_patterns.stoch_bullish_crossover.detected %}
+                                            <span class="text-green-600">Bullish Crossover</span>
+                                        {% elif result.detected_patterns.stoch_bearish_crossover is defined and result.detected_patterns.stoch_bearish_crossover.detected %}
+                                            <span class="text-red-600">Bearish Crossover</span>
+                                        {% else %}
+                                            <span class="text-gray-500">No Signal</span>
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            {% endif %}
+                            
+                            {% if result.detected_patterns.oversold is defined or result.detected_patterns.overbought is defined %}
+                                <div>
+                                    <h3 class="text-md font-medium text-gray-900">RSI</h3>
+                                    <p class="text-sm text-gray-600 mt-1">
+                                        {% if result.detected_patterns.oversold is defined and result.detected_patterns.oversold.detected %}
+                                            <span class="text-green-600">Oversold</span>
+                                        {% elif result.detected_patterns.overbought is defined and result.detected_patterns.overbought.detected %}
+                                            <span class="text-red-600">Overbought</span>
+                                        {% else %}
+                                            <span class="text-gray-500">Neutral</span>
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            {% endif %}
+                            
+                            {% if result.detected_patterns.bb_oversold is defined or result.detected_patterns.bb_overbought is defined %}
+                                <div>
+                                    <h3 class="text-md font-medium text-gray-900">Bollinger Bands</h3>
+                                    <p class="text-sm text-gray-600 mt-1">
+                                        {% if result.detected_patterns.bb_oversold is defined and result.detected_patterns.bb_oversold.detected %}
+                                            <span class="text-green-600">Price below lower band</span>
+                                        {% elif result.detected_patterns.bb_overbought is defined and result.detected_patterns.bb_overbought.detected %}
+                                            <span class="text-red-600">Price above upper band</span>
+                                        {% else %}
+                                            <span class="text-gray-500">Within bands</span>
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
