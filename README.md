@@ -22,8 +22,8 @@ A comprehensive trading bot and pattern recognition system for Deriv assets. Thi
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/yourusername/deriv-trading-analyzer.git
-cd deriv-trading-analyzer
+git clone [(https://github.com/PetrJoe/deriv-trading-bot.git)]
+cd deriv-trading-bot
 ```
 
 ### Step 2: Install TA-Lib
