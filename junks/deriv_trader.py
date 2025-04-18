@@ -9,7 +9,7 @@ from typing import Dict, List, Union, Optional, Tuple
 from dotenv import load_dotenv
 
 from bot import fetch_deriv_candles, analyze_data, plot_chart
-from pattern_recognition import PatternRecognizer
+from deriv.pattern_recognition import PatternRecognizer
 from chart_utils import plot_enhanced_chart, plot_deriv_chart
 
 # Load environment variables

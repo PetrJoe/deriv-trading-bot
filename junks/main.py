@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Union, Optional, Tuple
 from dotenv import load_dotenv
 
-from pattern_recognition import PatternRecognition  # Update class name to match
+from deriv.pattern_recognition import PatternRecognition  # Update class name to match
 from chart_utils import plot_enhanced_chart
 from bot import fetch_deriv_candles
 

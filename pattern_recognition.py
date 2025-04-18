@@ -93,30 +93,90 @@ class PatternRecognition:
         """
         patterns = self.detect_all_patterns()
         
-        # Count bullish and bearish signals
-        bullish_count = 0
-        bearish_count = 0
+        # Count bullish and bearish signals with confidence weighting
+        bullish_score = 0
+        bearish_score = 0
         
         pattern_signals = {}
         
         for pattern, result in patterns.items():
             if isinstance(result, dict) and 'detected' in result and result['detected']:
+                confidence = result.get('confidence', 0.5)
                 if 'signal' in result:
                     if result['signal'] == 'bullish':
-                        bullish_count += 1
+                        bullish_score += confidence
                         pattern_signals[pattern] = result
                     elif result['signal'] == 'bearish':
-                        bearish_count += 1
+                        bearish_score += confidence
                         pattern_signals[pattern] = result
         
-        # Generate recommendation based on pattern counts
-        if bullish_count > bearish_count:
+        # Add additional technical indicators for stronger signals
+        # RSI oversold/overbought
+        rsi = self.df['RSI'].iloc[-1] if 'RSI' in self.df.columns else None
+        if rsi is not None:
+            if rsi < 40:  # More aggressive threshold (was 30)
+                bullish_score += 0.6  # Increased weight (was 0.5)
+                pattern_signals['RSI_oversold'] = {'detected': True, 'signal': 'bullish', 'confidence': 0.6}
+            elif rsi > 60:  # More aggressive threshold (was 70)
+                bearish_score += 0.6  # Increased weight (was 0.5)
+                pattern_signals['RSI_overbought'] = {'detected': True, 'signal': 'bearish', 'confidence': 0.6}
+        
+        # MACD crossover
+        if 'MACD' in self.df.columns and 'MACD_signal' in self.df.columns:
+            if len(self.df) >= 2:
+                # Current MACD position
+                if self.df['MACD'].iloc[-1] > self.df['MACD_signal'].iloc[-1]:
+                    bullish_score += 0.5
+                    pattern_signals['MACD_above_signal'] = {'detected': True, 'signal': 'bullish', 'confidence': 0.5}
+                elif self.df['MACD'].iloc[-1] < self.df['MACD_signal'].iloc[-1]:
+                    bearish_score += 0.5
+                    pattern_signals['MACD_below_signal'] = {'detected': True, 'signal': 'bearish', 'confidence': 0.5}
+                    
+                # MACD crossovers (stronger signals)
+                if (self.df['MACD'].iloc[-2] < self.df['MACD_signal'].iloc[-2] and 
+                    self.df['MACD'].iloc[-1] > self.df['MACD_signal'].iloc[-1]):
+                    bullish_score += 0.8  # Increased weight (was 0.7)
+                    pattern_signals['MACD_bullish_crossover'] = {'detected': True, 'signal': 'bullish', 'confidence': 0.8}
+                elif (self.df['MACD'].iloc[-2] > self.df['MACD_signal'].iloc[-2] and 
+                    self.df['MACD'].iloc[-1] < self.df['MACD_signal'].iloc[-1]):
+                    bearish_score += 0.8  # Increased weight (was 0.7)
+                    pattern_signals['MACD_bearish_crossover'] = {'detected': True, 'signal': 'bearish', 'confidence': 0.8}
+        
+        # Moving Average relationship
+        if 'SMA_5' in self.df.columns and 'SMA_10' in self.df.columns:
+            if self.df['SMA_5'].iloc[-1] > self.df['SMA_10'].iloc[-1]:
+                bullish_score += 0.5
+                pattern_signals['SMA_bullish_alignment'] = {'detected': True, 'signal': 'bullish', 'confidence': 0.5}
+            elif self.df['SMA_5'].iloc[-1] < self.df['SMA_10'].iloc[-1]:
+                bearish_score += 0.5
+                pattern_signals['SMA_bearish_alignment'] = {'detected': True, 'signal': 'bearish', 'confidence': 0.5}
+        
+        # Price position relative to moving averages
+        if 'SMA_10' in self.df.columns:
+            if self.df['close'].iloc[-1] > self.df['SMA_10'].iloc[-1]:
+                bullish_score += 0.4
+                pattern_signals['price_above_MA'] = {'detected': True, 'signal': 'bullish', 'confidence': 0.4}
+            elif self.df['close'].iloc[-1] < self.df['SMA_10'].iloc[-1]:
+                bearish_score += 0.4
+                pattern_signals['price_below_MA'] = {'detected': True, 'signal': 'bearish', 'confidence': 0.4}
+        
+        # Lower the threshold for generating signals (was 0.5)
+        if bullish_score > bearish_score and bullish_score >= 0.4:
             return "Buy", pattern_signals
-        elif bearish_count > bullish_count:
+        elif bearish_score > bullish_score and bearish_score >= 0.4:
             return "Sell", pattern_signals
         else:
+            # If scores are very close, use recent price action as tiebreaker
+            if len(self.df) >= 3:
+                recent_change = (self.df['close'].iloc[-1] - self.df['close'].iloc[-3]) / self.df['close'].iloc[-3]
+                if recent_change > 0.001:  # Very small positive change is enough to trigger Buy
+                    return "Buy", pattern_signals
+                elif recent_change < -0.001:  # Very small negative change is enough to trigger Sell
+                    return "Sell", pattern_signals
+            
             return "Hold", pattern_signals
-    
+
+
     def detect_head_and_shoulders(self) -> Dict[str, Union[bool, float, str]]:
         """
         Detect Head and Shoulders pattern (bearish reversal).

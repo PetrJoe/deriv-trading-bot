@@ -10,6 +10,11 @@ import time
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import ta  # Technical analysis package
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from pattern_recognition import PatternRecognition
+
+
 
 # Load environment variables
 load_dotenv()
@@ -105,6 +110,7 @@ async def analyze_data(df):
         # Calculate moving averages
         df['SMA_5'] = df['close'].rolling(window=5).mean()
         df['SMA_10'] = df['close'].rolling(window=10).mean()
+        df['SMA_20'] = df['close'].rolling(window=20).mean()  # Add longer SMA for trend direction
 
         # RSI
         df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
@@ -113,33 +119,64 @@ async def analyze_data(df):
         macd = ta.trend.MACD(df['close'])
         df['MACD'] = macd.macd()
         df['MACD_signal'] = macd.macd_signal()
+        
+        # Add ADX for trend strength
+        adx = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
+        df['ADX'] = adx.adx()
+        df['DI+'] = adx.adx_pos()
+        df['DI-'] = adx.adx_neg()
 
         # Use PatternRecognition for advanced pattern detection
-        from pattern_recognition import PatternRecognition
         pattern_analyzer = PatternRecognition(df)
-        recommendation, pattern_signals = pattern_analyzer.get_trading_signal()
+        pattern_recommendation, pattern_signals = pattern_analyzer.get_trading_signal()
         
-        # Combine traditional signals with pattern recognition
+        # Determine market direction
+        market_direction = "Sideways"
+        direction_strength = "Weak"
+        
+        # Check trend direction using SMAs and ADX
+        if df['SMA_5'].iloc[-1] > df['SMA_20'].iloc[-1] and df['close'].iloc[-1] > df['SMA_5'].iloc[-1]:
+            market_direction = "Uptrend"
+            if df['ADX'].iloc[-1] > 25:
+                direction_strength = "Strong"
+            elif df['ADX'].iloc[-1] > 20:
+                direction_strength = "Moderate"
+        elif df['SMA_5'].iloc[-1] < df['SMA_20'].iloc[-1] and df['close'].iloc[-1] < df['SMA_5'].iloc[-1]:
+            market_direction = "Downtrend"
+            if df['ADX'].iloc[-1] > 25:
+                direction_strength = "Strong"
+            elif df['ADX'].iloc[-1] > 20:
+                direction_strength = "Moderate"
+        
+        # Generate more decisive signal with relaxed conditions
         traditional_signal = "Hold"
-        if df['SMA_5'].iloc[-1] > df['SMA_10'].iloc[-1] and df['MACD'].iloc[-1] > df['MACD_signal'].iloc[-1] and df['RSI'].iloc[-1] < 70:
+        
+        # Buy conditions - more aggressive
+        if ((df['SMA_5'].iloc[-1] > df['SMA_10'].iloc[-1]) or 
+            (df['MACD'].iloc[-1] > df['MACD_signal'].iloc[-1]) or 
+            (df['RSI'].iloc[-1] < 45) or
+            (df['DI+'].iloc[-1] > df['DI-'].iloc[-1] and df['ADX'].iloc[-1] > 20)):
             traditional_signal = "Buy"
-        elif df['SMA_5'].iloc[-1] < df['SMA_10'].iloc[-1] and df['MACD'].iloc[-1] < df['MACD_signal'].iloc[-1] and df['RSI'].iloc[-1] > 30:
+        # Sell conditions - more aggressive
+        elif ((df['SMA_5'].iloc[-1] < df['SMA_10'].iloc[-1]) or 
+              (df['MACD'].iloc[-1] < df['MACD_signal'].iloc[-1]) or 
+              (df['RSI'].iloc[-1] > 55) or
+              (df['DI-'].iloc[-1] > df['DI+'].iloc[-1] and df['ADX'].iloc[-1] > 20)):
             traditional_signal = "Sell"
         
-        # If pattern recognition and traditional signals agree, increase confidence
-        # Otherwise, prefer pattern recognition as it's more sophisticated
-        final_signal = recommendation if recommendation != "Hold" else traditional_signal
+        # Prioritize pattern recognition signals, but use traditional if pattern is "Hold"
+        final_signal = pattern_recommendation if pattern_recommendation != "Hold" else traditional_signal
         
         # Get the most significant detected patterns
         detected_patterns = [pattern for pattern, details in pattern_signals.items() 
-                            if details.get('detected', False)]
+                           if details.get('detected', False)]
         pattern_str = ", ".join(detected_patterns) if detected_patterns else "None"
 
-        return df, final_signal, pattern_str
+        return df, final_signal, pattern_str, market_direction, direction_strength
 
     except Exception as e:
         logger.error(f"Error in analysis: {str(e)}")
-        return df, "Hold", "None"
+        return df, "Hold", "None", "Unknown", "Unknown"
 
 
 async def r75_analysis_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -158,8 +195,8 @@ async def r75_analysis_command(update: Update, context: ContextTypes.DEFAULT_TYP
             results.append(f"❌ Failed to fetch data for {timeframe} timeframe")
             continue
             
-        # Fix: Add await here
-        analyzed_df, recommendation, patterns = await analyze_data(df)
+        # Update to include market direction
+        analyzed_df, recommendation, patterns, market_direction, direction_strength = await analyze_data(df)
         
         # Get key indicators
         current_price = analyzed_df['close'].iloc[-1]
@@ -169,8 +206,11 @@ async def r75_analysis_command(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # Create a message for this timeframe
         signal_emoji = "🟢" if recommendation == "Buy" else "🔴" if recommendation == "Sell" else "⚪"
+        direction_emoji = "↔️" if market_direction == "Sideways" else "🔼" if market_direction == "Uptrend" else "🔽"
+        
         timeframe_result = (
-            f"{signal_emoji} <b>{timeframe}</b>: {recommendation}\n"
+            f"{signal_emoji} <b>{timeframe}</b>: {recommendation} {direction_emoji}\n"
+            f"  • Direction: {market_direction} ({direction_strength})\n"
             f"  • Patterns: {patterns}\n"
             f"  • RSI: {rsi:.2f}\n"
             f"  • MACD: {macd_val:.2f} | Signal: {macd_signal:.2f}\n"
@@ -180,8 +220,8 @@ async def r75_analysis_command(update: Update, context: ContextTypes.DEFAULT_TYP
     # Generate chart for 1h timeframe
     df = await fetch_deriv_candles(symbol='R_75', granularity=AVAILABLE_TIMEFRAMES['1h'], count=100)
     if not df.empty:
-        # Fix: Add await here
-        analyzed_df, _, _ = await analyze_data(df)
+        # Update to include market direction
+        analyzed_df, _, _, market_direction, direction_strength = await analyze_data(df)
         chart_path = plot_chart(analyzed_df, symbol='R_75')
     else:
         chart_path = None
@@ -197,10 +237,15 @@ async def r75_analysis_command(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         overall = "⚪ <b>OVERALL: NEUTRAL</b>"
     
+    # Add overall market direction
+    direction_emoji = "↔️" if market_direction == "Sideways" else "🔼" if market_direction == "Uptrend" else "🔽"
+    overall_direction = f"{direction_emoji} <b>MARKET DIRECTION: {market_direction} ({direction_strength})</b>"
+    
     # Combine all results
     message = (
         f"📊 <b>R_75 ANALYSIS</b> 📊\n\n"
-        f"{overall}\n\n"
+        f"{overall}\n"
+        f"{overall_direction}\n\n"
         f"<b>TIMEFRAME ANALYSIS:</b>\n"
         f"{chr(10).join(results)}\n"
         f"🕒 {datetime.now().strftime('%H:%M:%S')}"
@@ -216,16 +261,152 @@ async def r75_analysis_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(message, parse_mode='HTML')
 
 
+async def force_signal_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Force a signal analysis with lower thresholds for testing purposes."""
+    if not context.args or len(context.args) < 1:
+        await update.message.reply_text(
+            "Please specify a symbol. Example: /force_signal R_75"
+        )
+        return
+
+    symbol = context.args[0].upper()
+    if symbol not in AVAILABLE_SYMBOLS:
+        await update.message.reply_text(
+            f"Symbol {symbol} not found. Use /symbols to see available options."
+        )
+        return
+
+    await update.message.reply_text(f"Forcing signal analysis for {symbol}... Please wait.")
+    
+    df = await fetch_deriv_candles(symbol=symbol)
+    if df.empty:
+        await update.message.reply_text("Failed to fetch data.")
+        return
+    
+    # Analyze with lower thresholds
+    df = df.copy()
+    df.set_index('epoch', inplace=True)
+    
+    # Calculate indicators
+    df['SMA_5'] = df['close'].rolling(window=5).mean()
+    df['SMA_10'] = df['close'].rolling(window=10).mean()
+    df['SMA_20'] = df['close'].rolling(window=20).mean()
+    df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
+    macd = ta.trend.MACD(df['close'])
+    df['MACD'] = macd.macd()
+    df['MACD_signal'] = macd.macd_signal()
+    
+    # Add ADX for trend strength
+    adx = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
+    df['ADX'] = adx.adx()
+    df['DI+'] = adx.adx_pos()
+    df['DI-'] = adx.adx_neg()
+    
+    # Determine market direction
+    market_direction = "Sideways"
+    direction_strength = "Weak"
+    
+    # Check trend direction using SMAs and ADX
+    if df['SMA_5'].iloc[-1] > df['SMA_20'].iloc[-1] and df['close'].iloc[-1] > df['SMA_5'].iloc[-1]:
+        market_direction = "Uptrend"
+        if df['ADX'].iloc[-1] > 25:
+            direction_strength = "Strong"
+        elif df['ADX'].iloc[-1] > 20:
+            direction_strength = "Moderate"
+    elif df['SMA_5'].iloc[-1] < df['SMA_20'].iloc[-1] and df['close'].iloc[-1] < df['SMA_5'].iloc[-1]:
+        market_direction = "Downtrend"
+        if df['ADX'].iloc[-1] > 25:
+            direction_strength = "Strong"
+        elif df['ADX'].iloc[-1] > 20:
+            direction_strength = "Moderate"
+    
+    # Get pattern signals
+    pattern_analyzer = PatternRecognition(df)
+    pattern_signals = pattern_analyzer.detect_all_patterns()
+    
+    # Count signals
+    bullish_patterns = [p for p, r in pattern_signals.items() 
+                      if isinstance(r, dict) and r.get('detected', False) and r.get('signal') == 'bullish']
+    bearish_patterns = [p for p, r in pattern_signals.items() 
+                      if isinstance(r, dict) and r.get('detected', False) and r.get('signal') == 'bearish']
+    
+    # Technical indicators
+    current_price = df['close'].iloc[-1]
+    rsi = df['RSI'].iloc[-1]
+    macd_val = df['MACD'].iloc[-1]
+    macd_signal = df['MACD_signal'].iloc[-1]
+    
+    # Generate signal with very low threshold - more decisive
+    if len(bullish_patterns) > len(bearish_patterns) or macd_val > macd_signal or rsi < 45 or df['DI+'].iloc[-1] > df['DI-'].iloc[-1]:
+        recommendation = "Buy"
+    elif len(bearish_patterns) > len(bullish_patterns) or macd_val < macd_signal or rsi > 55 or df['DI-'].iloc[-1] > df['DI+'].iloc[-1]:
+        recommendation = "Sell"
+    else:
+        recommendation = "Hold"
+    
+    # Create detailed message
+    signal_emoji = "🟢" if recommendation == "Buy" else "🔴" if recommendation == "Sell" else "⚪"
+    direction_emoji = "↔️" if market_direction == "Sideways" else "🔼" if market_direction == "Uptrend" else "🔽"
+    
+    message = (
+        f"{signal_emoji} <b>{symbol} FORCED SIGNAL: {recommendation}</b>\n"
+        f"{direction_emoji} <b>Market Direction: {market_direction} ({direction_strength})</b>\n\n"
+        f"<b>Technical Indicators:</b>\n"
+        f"• Price: {current_price:.2f}\n"
+        f"• RSI: {rsi:.2f}\n"
+        f"• MACD: {macd_val:.2f} | Signal: {macd_signal:.2f}\n"
+        f"• SMA 5: {df['SMA_5'].iloc[-1]:.2f}\n"
+        f"• SMA 10: {df['SMA_10'].iloc[-1]:.2f}\n"
+        f"• ADX: {df['ADX'].iloc[-1]:.2f} (DI+: {df['DI+'].iloc[-1]:.2f}, DI-: {df['DI-'].iloc[-1]:.2f})\n\n"
+        f"<b>Bullish Patterns ({len(bullish_patterns)}):</b>\n"
+        f"{', '.join(bullish_patterns) if bullish_patterns else 'None'}\n\n"
+        f"<b>Bearish Patterns ({len(bearish_patterns)}):</b>\n"
+        f"{', '.join(bearish_patterns) if bearish_patterns else 'None'}\n\n"
+        f"🕒 {datetime.now().strftime('%H:%M:%S')}"
+    )
+    
+    # Plot chart
+    chart_path = plot_chart(df, symbol)
+    
+    if chart_path and os.path.exists(chart_path):
+        await update.message.reply_photo(
+            photo=open(chart_path, 'rb'),
+            caption=message,
+            parse_mode='HTML'
+        )
+    else:
+        await update.message.reply_text(message, parse_mode='HTML')
+
 
 def plot_chart(df, symbol=SYMBOL, chart_file=CHART_FILE):
     try:
         os.makedirs(os.path.dirname(chart_file), exist_ok=True)
-        fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+        fig, axs = plt.subplots(4, 1, figsize=(12, 12), sharex=True, gridspec_kw={'height_ratios': [3, 1, 1, 1]})
 
         # Price + SMA
         axs[0].plot(df.index, df['close'], label='Close', color='blue')
         axs[0].plot(df.index, df['SMA_5'], label='SMA 5', color='orange')
         axs[0].plot(df.index, df['SMA_10'], label='SMA 10', color='green')
+        if 'SMA_20' in df.columns:
+            axs[0].plot(df.index, df['SMA_20'], label='SMA 20', color='red')
+        
+        # Add market direction arrow and text
+        last_idx = df.index[-1]
+        last_price = df['close'].iloc[-1]
+        
+        # Determine trend direction for visual indicator
+        if 'SMA_5' in df.columns and 'SMA_20' in df.columns:
+            if df['SMA_5'].iloc[-1] > df['SMA_20'].iloc[-1]:
+                axs[0].annotate('↑', xy=(last_idx, last_price*1.01), 
+                             xytext=(last_idx, last_price*1.03),
+                             arrowprops=dict(facecolor='green', shrink=0.05),
+                             fontsize=16, color='green')
+            elif df['SMA_5'].iloc[-1] < df['SMA_20'].iloc[-1]:
+                axs[0].annotate('↓', xy=(last_idx, last_price*0.99), 
+                             xytext=(last_idx, last_price*0.97),
+                             arrowprops=dict(facecolor='red', shrink=0.05),
+                             fontsize=16, color='red')
+        
         axs[0].set_title(f'{symbol} Price & SMA')
         axs[0].legend()
 
@@ -241,6 +422,15 @@ def plot_chart(df, symbol=SYMBOL, chart_file=CHART_FILE):
         axs[2].plot(df.index, df['MACD_signal'], label='Signal Line', color='magenta')
         axs[2].set_title('MACD')
         axs[2].legend()
+        
+        # ADX if available
+        if 'ADX' in df.columns and 'DI+' in df.columns and 'DI-' in df.columns:
+            axs[3].plot(df.index, df['ADX'], label='ADX', color='blue')
+            axs[3].plot(df.index, df['DI+'], label='DI+', color='green')
+            axs[3].plot(df.index, df['DI-'], label='DI-', color='red')
+            axs[3].axhline(25, color='gray', linestyle='--', linewidth=1)
+            axs[3].set_title('ADX')
+            axs[3].legend()
 
         plt.tight_layout()
         plt.savefig(chart_file)
@@ -251,14 +441,15 @@ def plot_chart(df, symbol=SYMBOL, chart_file=CHART_FILE):
         return None
 
 
+
 async def fetch_and_analyze(symbol=SYMBOL, granularity=GRANULARITY, count=CANDLE_COUNT):
     try:
         df = await fetch_deriv_candles(symbol, granularity, count)
         if df.empty:
-            return None, None, None, "Failed to fetch data"
+            return None, None, None, "Failed to fetch data", None, None
 
-        # Fix: Add await here since analyze_data is now async
-        analyzed_df, recommendation, pattern = await analyze_data(df)
+        # Update to include market direction
+        analyzed_df, recommendation, pattern, market_direction, direction_strength = await analyze_data(df)
         chart_path = plot_chart(analyzed_df, symbol)
 
         current_price = analyzed_df['close'].iloc[-1]
@@ -266,9 +457,14 @@ async def fetch_and_analyze(symbol=SYMBOL, granularity=GRANULARITY, count=CANDLE
         macd_val = analyzed_df['MACD'].iloc[-1]
         macd_signal = analyzed_df['MACD_signal'].iloc[-1]
         
+        # Add direction emoji
+        direction_emoji = "↔️" if market_direction == "Sideways" else "🔼" if market_direction == "Uptrend" else "🔽"
+        signal_emoji = "🟢" if recommendation == "Buy" else "🔴" if recommendation == "Sell" else "⚪"
+        
         # Using HTML formatting instead of Markdown
         signal_message = (
-            f"📊 <b>{symbol}</b> Signal: <b>{recommendation}</b>\n"
+            f"{signal_emoji} <b>{symbol}</b> Signal: <b>{recommendation}</b>\n"
+            f"{direction_emoji} Market Direction: <b>{market_direction} ({direction_strength})</b>\n"
             f"🧠 Pattern: <b>{pattern}</b>\n"
             f"💰 Price: {current_price:.2f}\n"
             f"📈 RSI: {rsi:.2f}\n"
@@ -277,12 +473,11 @@ async def fetch_and_analyze(symbol=SYMBOL, granularity=GRANULARITY, count=CANDLE
         )
         
         logger.info(signal_message)
-        return analyzed_df, recommendation, chart_path, signal_message
+        return analyzed_df, recommendation, chart_path, signal_message, market_direction, direction_strength
 
     except Exception as e:
         logger.error(f"Error in fetch_and_analyze: {str(e)}")
-        return None, None, None, f"Error: {str(e)}"
-
+        return None, None, None, f"Error: {str(e)}", None, None
 
 
 async def periodic_r75_analysis(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -306,8 +501,8 @@ async def periodic_r75_analysis(context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
         
-    # Fix: Add await here
-    analyzed_df, recommendation, patterns = await analyze_data(df)
+    # Update to include market direction
+    analyzed_df, recommendation, patterns, market_direction, direction_strength = await analyze_data(df)
     chart_path = plot_chart(analyzed_df, symbol='R_75')
     
     # Get key indicators
@@ -318,9 +513,12 @@ async def periodic_r75_analysis(context: ContextTypes.DEFAULT_TYPE) -> None:
     
     # Create signal message
     signal_emoji = "🟢" if recommendation == "Buy" else "🔴" if recommendation == "Sell" else "⚪"
+    direction_emoji = "↔️" if market_direction == "Sideways" else "🔼" if market_direction == "Uptrend" else "🔽"
+    
     message = (
         f"🔄 <b>R_75 AUTOMATIC UPDATE</b> 🔄\n\n"
         f"{signal_emoji} <b>Signal: {recommendation}</b>\n"
+        f"{direction_emoji} <b>Market Direction: {market_direction} ({direction_strength})</b>\n"
         f"🧠 Patterns: {patterns}\n"
         f"💰 Price: {current_price:.2f}\n"
         f"📈 RSI: {rsi:.2f}\n"
@@ -414,10 +612,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/timeframes - List available timeframes\n"
         "/analyze &lt;symbol&gt; &lt;timeframe&gt; - Detailed analysis (e.g., /analyze R_75 1h)\n"
         "/r75 - Comprehensive R_75 analysis across multiple timeframes\n"
+        "/force_signal &lt;symbol&gt; - Force signal generation with lower thresholds\n"
         "/auto_start [interval] - Start automatic R_75 analysis (interval in minutes, default: 60)\n"
         "/auto_stop - Stop automatic R_75 analysis\n"
         "/help - Show this help message\n\n"
-        "For any issues or feedback, please contact the administrator."
+        "For any issues or feedback, please contact the administrator @petrjoe."
     )
     await update.message.reply_text(help_message, parse_mode='HTML')
 
@@ -455,7 +654,33 @@ async def signal_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     await update.message.reply_text(f"Analyzing {symbol}... Please wait.")
     
-    _, _, chart_path, signal_message = await fetch_and_analyze(symbol=symbol)
+    df = await fetch_deriv_candles(symbol=symbol)
+    if df.empty:
+        await update.message.reply_text("Failed to fetch data.")
+        return
+    
+    # Update to include market direction
+    analyzed_df, recommendation, patterns, market_direction, direction_strength = await analyze_data(df)
+    chart_path = plot_chart(analyzed_df, symbol)
+    
+    current_price = analyzed_df['close'].iloc[-1]
+    rsi = analyzed_df['RSI'].iloc[-1]
+    macd_val = analyzed_df['MACD'].iloc[-1]
+    macd_signal = analyzed_df['MACD_signal'].iloc[-1]
+    
+    # Add direction emoji
+    direction_emoji = "↔️" if market_direction == "Sideways" else "🔼" if market_direction == "Uptrend" else "🔽"
+    signal_emoji = "🟢" if recommendation == "Buy" else "🔴" if recommendation == "Sell" else "⚪"
+    
+    signal_message = (
+        f"{signal_emoji} <b>{symbol}</b> Signal: <b>{recommendation}</b>\n"
+        f"{direction_emoji} Market Direction: <b>{market_direction} ({direction_strength})</b>\n"
+        f"🧠 Pattern: <b>{patterns}</b>\n"
+        f"💰 Price: {current_price:.2f}\n"
+        f"📈 RSI: {rsi:.2f}\n"
+        f"📉 MACD: {macd_val:.2f} | Signal: {macd_signal:.2f}\n"
+        f"🕒 {datetime.now().strftime('%H:%M:%S')}"
+    )
     
     if chart_path and os.path.exists(chart_path):
         await update.message.reply_photo(
@@ -532,8 +757,9 @@ def run_telegram_bot():
     application.add_handler(CommandHandler("timeframes", list_timeframes))
     application.add_handler(CommandHandler("signal", signal_command))
     application.add_handler(CommandHandler("analyze", analyze_command))
+    application.add_handler(CommandHandler("force_signal", force_signal_command))  # Add this line
     
-    # Add new R_75 specific commands
+    # Add R_75 specific commands
     application.add_handler(CommandHandler("r75", r75_analysis_command))
     application.add_handler(CommandHandler("auto_start", start_auto_analysis))
     application.add_handler(CommandHandler("auto_stop", stop_auto_analysis))

@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime
 from deriv_api import DerivAPI #type:ignore
 from dotenv import load_dotenv
-from pattern_recognition import PatternRecognition  # Update class name to match
+from deriv.pattern_recognition import PatternRecognition  # Update class name to match
 from chart_utils import plot_enhanced_chart, plot_deriv_chart  # Add plot_deriv_chart import
 from bot import fetch_deriv_candles, analyze_data
 
