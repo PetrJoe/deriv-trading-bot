@@ -1,0 +1,6 @@
+.env
+static/
+data.csv
+pycache
+__pycache__
+trading_bot_app.log
