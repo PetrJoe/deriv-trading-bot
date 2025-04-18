@@ -11,6 +11,14 @@ numpy
 yfinance
 scikit-learn
 ta
+python-telegram-bot
+
+
+
+
+
+
+
 
 
 
